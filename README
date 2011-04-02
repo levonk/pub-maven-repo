@@ -1,0 +1,215 @@
+http://cemerick.com/2010/08/24/hosting-maven-repos-on-github/
+
+Hosting Maven Repos on Github
+Posted on August 24, 2010 by Chas Emerick
+Hosting Maven repos has gotten easier and easier over the years.  We.ve run the free version of Nexus for a couple of years now, which owns all the other options feature-wise as far as I can tell, and is a cinch to get set up and maintain.  There.s a raft of other free Maven repository servers, using plain-Jane FTP, and various recipes on the .nets to serve up a Hudson instance.s local Maven repository for remote usage.  Finally, Sonatype began offering free Maven repository hosting (via Nexus) for open source projects earlier this year, which comes with automatic syncing/promotion to Maven Central if you meet the attendant requirements.
+
+Despite all these options, I continue to run into people that are intimidated by the notion of running a Maven repo to support their own projects . something that is increasingly necessary in the Clojure community, where all of the build tools at hand (clojure-maven-plugin, Leiningen, Clojuresque [a Gradle plugin], and those brave souls that use Ant + Ivy) require Maven-style artifact repositories.  Some recent discussions on this topic reminded me of a technique I came across a few months ago for hosting a maven repository on Google Code (also available for those that use Kenai).  This approach (ab)uses a Google Code subversion repo as a maven repo (over either webdav or svn protocols). At the time, I thought that it would be nice to do the same with Github, since I.ve long since sworn off svn, but I didn.t pursue it any further then.
+
+So, perhaps people might find hosting Maven artifacts on Github more approachable than running a proper Maven repository.  Thankfully, it.s remarkably easy to get setup; there.s no rocket science here, and the approach is fundamentally the same as using a subversion repository as a Maven repo, but a walkthrough is warranted nonetheless.  I.ll demonstrate the workflow using clutch, the Clojure CouchDB library that I.ve contributed to a fair bit.
+
+1. Set up/identify your Maven repo project on Github
+
+You need to figure out where you.re going to deploy (and then host) your project artifacts.  I.ve created a new repo, and checked it out at the root of my dev directory.
+
+1
+[catapult:~/dev] chas% git clone git@github.com:cemerick/cemerick-mvn-repo.git
+2
+Initialized empty Git repository in ~/dev/cemerick-mvn-repo/.git/
+3
+warning: You appear to have cloned an empty repository.
+Because Maven namespaces artifacts based on their group and artifact IDs, you should probably have only one Github-hosted Maven repository for all of your projects and other miscellaneous artifact storage.  I can.t see any reason to have a repository-per-project.
+
+2. Set up separate snapshots and releases directories.
+
+Snapshots and releases should be kept separate in Maven repositories.  This isn.t a technical necessity, but will generally be expected by your repo.s consumers, especially if they.re familiar with Maven.  (Repository managers such as Nexus actually require that individual repositories. types be declared upon creation, as either snapshot or release.)
+
+1
+[catapult:~/dev] chas% cd cemerick-mvn-repo/
+2
+[catapult:~/dev/cemerick-mvn-repo] chas% mkdir snapshots
+3
+[catapult:~/dev/cemerick-mvn-repo] chas% mkdir releases
+3. Deploy your project.s artifacts to your Maven repo
+
+A properly-useful pom.xml contains a <distributionManagement> configuration that specifies the repositories to which one.s project artifacts should be deployed.  If you.re only going to use Github-hosted Maven repositories, then we just need to stub this configuration out (doing this will not be necessary in the future1):
+
+01
+<distributionManagement>
+02
+    <repository>
+03
+        <id>repo</id>
+04
+        <url>https://github.com/cemerick/cemerick-mvn-repo/raw/master/releases</url>
+05
+    </repository>
+06
+    <snapshotRepository>
+07
+        <id>snapshot-repo</id>
+08
+        <url>https://github.com/cemerick/cemerick-mvn-repo/raw/master/snapshots</url>
+09
+    </snapshotRepository>
+10
+</distributionManagement>
+Usually, URLs provided here would describe a Maven repository server.s API endpoint (e.g. a webdav URL, etc).  That.s obviously not available if Github is going to be hosting the contents of the Maven repos, so I.m just using the root URLs where my git Maven repos will be hosted from; as a side effect, this will cause mvn deploy to fail if I  don.t provide a path to my clone of the Github Maven repo.
+
+Now let.s run the clutch build and deploy our artifacts (which handily implies running all of the project.s tests), providing a path to our repo.s clone directory using the altDeploymentRepository system property (heavily edited console output below)2:
+
+1
+[catapult:~/dev/cemerick-mvn-repo/] chas% cd ../vendor/clutch
+2
+[catapult:~/dev/vendor/clutch] chas% mvn -DaltDeploymentRepository=snapshot-repo::default::file:../../cemerick-mvn-repo/snapshots clean deploy
+3
+[INFO] Building jar: ~/dev/vendor/clutch/target/clutch-0.2.3-SNAPSHOT.jar
+4
+[INFO] Using alternate deployment repository snapshot-repo::default::file:../../cemerick-mvn-repo/snapshots
+5
+[INFO] Retrieving previous build number from snapshot-repo
+6
+Uploading: file:../../cemerick-mvn-repo/snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.jar
+7
+729K uploaded  (clutch-0.2.3-SNAPSHOT.jar)
+8
+[INFO] BUILD SUCCESSFUL
+That looks happy-making.  Let.s take a look:
+
+01
+[catapult:~/dev/vendor/clutch] chas% find ~/dev/cemerick-mvn-repo/snapshots
+02
+/Users/chas/dev/cemerick-mvn-repo/snapshots/
+03
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com
+04
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa
+05
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch
+06
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT
+07
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.jar
+08
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.jar.md5
+09
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.jar.sha1
+10
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.pom
+11
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.pom.md5
+12
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.pom.sha1
+13
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/maven-metadata.xml
+14
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/maven-metadata.xml.md5
+15
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/0.2.3-SNAPSHOT/maven-metadata.xml.sha1
+16
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/maven-metadata.xml
+17
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/maven-metadata.xml.md5
+18
+/Users/chas/dev/cemerick-mvn-repo/snapshots//com/ashafa/clutch/maven-metadata.xml.sha1
+That there is a Maven repository.  Just to briefly dissect the altDeploymentRepository argument:
+
+snapshot-repo::default::file:../../cemerick-mvn-repo/snapshots
+
+It.s a three-part descriptor of sorts:
+
+snapshot-repo is the ID of the repository we.re defining, and can refer to one of the repositories specified in the <distributionManagement> section of the pom.xml.  This allows one to change a repository.s URL while retaining other <distributionManagement> configuration that might be set.
+default is the repository type; unless you.re monkeying with Maven 1-style repositories (hardly anyone is these days), this is required.
+file:../../cemerick-mvn-repo/snapshots is the actual repository URL, and has to be relative to the root of your project, or absolute. No ~ here, etc.
+4. Push to Github
+
+Remember that your Maven repo is just like any other git repo, so changes need to be committed and pushed up in order to be useful.
+
+01
+[catapult:~/dev/cemerick-mvn-repo] chas% git add *
+02
+[catapult:~/dev/cemerick-mvn-repo] chas% git commit -m "clutch 0.2.3-SNAPSHOT"
+03
+[master f177c06] clutch 0.2.3-SNAPSHOT
+04
+ 12 files changed, 164 insertions(+), 2 deletions(-)
+05
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.jar
+06
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.jar.md5
+07
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.jar.sha1
+08
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.pom
+09
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.pom.md5
+10
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/clutch-0.2.3-SNAPSHOT.pom.sha1
+11
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/maven-metadata.xml
+12
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/maven-metadata.xml.md5
+13
+ create mode 100644 snapshots/com/ashafa/clutch/0.2.3-SNAPSHOT/maven-metadata.xml.sha1
+14
+[catapult:~/dev/cemerick-mvn-repo] chas% git push origin master
+15
+Counting objects: 24, done.
+16
+Delta compression using 2 threads.
+17
+Compressing objects: 100% (7/7), done.
+18
+Writing objects: 100% (19/19), 669.07 KiB, done.
+19
+Total 19 (delta 1), reused 0 (delta 0)
+20
+To git@github.com:cemerick/cemerick-mvn-repo.git
+21
+ f57ccba..f177c06  master -> master
+5. Use your new Maven repository
+
+Your repository.s root will be at
+
+https://github.com/<your-github-username>/<your-github-maven-project>/raw/master/
+
+Just append snapshots or releases to that root URL, as appropriate for your project.s dependencies.
+
+You can use your Github-hosted Maven repository in all the same ways as you would use a .normal. Maven repo . configure projects to depend on artifacts from it, proxy and aggregate it with Maven repository servers like Nexus, etc. The most common case of projects depending upon artifacts in the repo only requires a corresponding <repository> entry in their pom.xml, e.g.:
+
+1
+<repositories>
+2
+    <repository>
+3
+        <id>cemerick-snapshots</id>
+4
+        <url>https://github.com/cemerick/cemerick-mvn-repo/raw/master/snapshots</url>
+5
+    </repository>
+6
+</repositories>
+Advantages
+
+Administrative simplicity: there are no servers to maintain, no additional accounts to obtain (i.e. compared to using Sonatype.s OSS Nexus hosting service), and the workflow is very familiar (at least to those that use git).
+Configuration simplicity: compared to (ab)using Google Code, Kenai, or any other subversion host as a Maven repository, the project configuration described above is far simpler.  Subversion options require adding a build extension (for either wagon-svn or wagon-webdav) and specifying svn credentials in one.s ~/.m2/settings.xml.
+Tighter alignment with the .real world.: ideally, every artifact would be in Maven Central, and every project would use Hudson and deploy SNAPSHOT artifacts to a Maven repo.  In reality, if you want to depend upon the bleeding edge of most projects . which aren.t regularly built in a continuous integration environment and which don.t regularly throw off artifacts from HEAD . having an artifact repository that is (roughly) co-located with the source repository that you control is very handy.  This is true even if you have your own hosted Maven repo, such as Nexus; especially for SNAPSHOTs of .vendor. artifacts, it.s often easier to simply deploy to a local clone of your git-hosted Maven repo and push that than it is to recall the URL for your Maven server.s third-party snapshots repository, or constantly be adding/modifying a <distributionManagement> element to the projects. pom.xml.
+Caveats / Cons
+
+This practice may be considered harmful by some.  Quoting here from comments on another description of how to host Maven repositories via svn:
+This basically introduces microrepository. Users of these projects require either duplicate entries in their pom: one for the dependency and one for the repository, or put great burden on the maintainer of the local repository to add each microrepository by hand..So please instead of this solution have your Maven build post artifacts to a real repository like Java.s, Maven.s or Sontatype.s.
+. tbee
+
+Please do NOT use this approach. Sonatype provide free hosting of a Maven Repo for open source projects and BONUS! you get syncing to Maven Central too for free!!!
+. Stephen Connolly
+
+tbee.s point is that, the more .microrepositories. there are, the more work there is for those that maintain their own .proper. Maven repository servers, all of which provide a proxying feature that allows users of such servers (almost always deployed in a corporate environment as a hedge against network issues, artifact rot, and security/provenance issues, among other things) to specify only one source repository in their projects. pom.xml configurations, even if artifacts are actually originating from dozens or hundreds of upstream repositories.  I don.t really buy that argument, insofar as the cat is definitely out of the bag vis áis a proliferation of Maven repositories. Our Nexus install proxies around 15 Maven repositories in addition to Maven Central, and I suspect that that.s a very, very low compared to the typical Nexus site. I.ll bet there are hundreds . perhaps thousands . of moderately-active Maven repositories in the world already.
+
+I agree with Stephen that if you are willing to get set up with deployment rights to Sonatype.s OSS Maven repo, you should do so.  Not everyone is though . and I.d rather see people using dependency management than not, and sharing SNAPSHOT builds rather than not. In any case, if you use this method, know that you.ve strayed from the Maven pack to some extent.
+
+The notion of having to commit the results of a mvn deploy invocation is very foreign.  This is particularly odd for release artifacts, the deployment of which are ostensibly transactional (yes, the git commit / git push workflow is atomic as far as other users of the git/Maven repository are concerned, but I.m referring to the deployer.s perspective here).  The subversion-based Maven hosting arrangements don.t suffer from this workflow oddity, which is nice.  I suppose one could add a post-commit hook to immediately push results, but that.s just illustrating the law of conservation of strangeness, sloughing off unusual semantics from Maven-land to the Realm of git.  You could fall back to using Github.s svn write support, but then you.re back in subversion-land, with the configuration complexity I noted earlier.
+Without a proper Maven repository server receiving deployed artifacts, there will never be any indexes offered by these git-hosted Maven repos.  The same goes for subversion-hosted Maven repos as well. Such indexes are a bit of a niche feature, but are well-liked by those using Maven-capable tooling (such as the Eclipse and NetBeans IDEs).  It would be possible to generate and update those indexes in conjunction with the deployment process, but that would likely require a new Maven plugin . a configuration complication, and perhaps enough additional work to make deploying to Sonatype.s OSS repo or hosting one.s own Maven repository worthwhile.
+Footnotes
+
+The fact that Maven currently requires a stubbed-out <distributionManagement> configuration is a known bug, slated to be fixed for Maven 2.5. Specifying the deployment repository location via the altDeploymentRepository will then be sufficient.
+An alternative to using the altDeploymentRepository option would be to make the git Maven repository a submodule of the project repository.  This would require that the git Maven repo be the canonical Maven repo for the project, and would imply that all the usual git submodule gymnastics be used when deploying to the git Maven repo.  I.ve not tried this workflow myself, but might be worth experimenting with.
