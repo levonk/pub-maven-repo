@@ -3,12 +3,13 @@
   <groupId>com.levonk</groupId>
   <artifactId>codequality</artifactId>
   <versioning>
-    <release>1.0.2</release>
+    <release>1.0.3</release>
     <versions>
       <version>1.0</version>
       <version>1.0.1</version>
       <version>1.0.2</version>
+      <version>1.0.3</version>
     </versions>
-    <lastUpdated>20120426012313</lastUpdated>
+    <lastUpdated>20120426015136</lastUpdated>
   </versioning>
 </metadata>
